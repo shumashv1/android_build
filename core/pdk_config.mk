@@ -17,7 +17,7 @@ PDK_PLATFORM_JAVA_ZIP_JAVA_TARGET_LIB_DIR += \
   target/common/obj/JAVA_LIBRARIES/conscrypt_intermediates \
   target/common/obj/JAVA_LIBRARIES/core-oj_intermediates \
   target/common/obj/JAVA_LIBRARIES/core-libart_intermediates \
-  target/common/obj/JAVA_LIBRARIES/core-junit_intermediates \
+  target/common/obj/JAVA_LIBRARIES/legacy-test_intermediates \
   target/common/obj/JAVA_LIBRARIES/ext_intermediates \
   target/common/obj/JAVA_LIBRARIES/framework_intermediates \
   target/common/obj/JAVA_LIBRARIES/ims-common_intermediates \
@@ -87,7 +87,7 @@ $(_pdk_fusion_files) : $(_pdk_fusion_stamp)
 # That's desired by us: we want only absent files from the platform zip package.
 # Copy with the last-modified time preserved, never follow symbolic links.
 $(PRODUCT_OUT)/% : $(_pdk_fusion_intermediates)/% $(_pdk_fusion_stamp)
-	@mkdir -p $(dir $@)
+	$(hide) mkdir -p $(dir $@)
 	$(hide) rm -rf $@
 	$(hide) cp -fpPR $< $@
 

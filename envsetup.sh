@@ -20,8 +20,12 @@ Invoke ". build/envsetup.sh" from your shell to add the following functions to y
 - sepgrep:   Greps on all local sepolicy files.
 - sgrep:     Greps on all local source files.
 - godir:     Go to the directory containing a file.
-- aospremote: Add git remote for matching AOSP repository
-- cafremote: Add git remote for matching CodeAurora repository.
+
+EOF
+
+    __print_ev_functions_help
+
+cat <<EOF
 
 Environment options:
 - SANITIZE_HOST: Set to 'true' to use ASAN for all host modules. Note that
@@ -30,19 +34,22 @@ Environment options:
 
 Look at the source to view more functions. The complete list is:
 EOF
-    T=$(gettop)
-    for i in `cat $T/build/envsetup.sh | sed -n "/^[[:blank:]]*function /s/function \([a-z_]*\).*/\1/p" | sort | uniq`; do
-      echo $i
-    done | column
+    local T=$(gettop)
+    local A=""
+    local i
+    for i in `cat $T/build/envsetup.sh $T/vendor/ev/build/envsetup.sh | sed -n "/^[[:blank:]]*function /s/function \([a-z_]*\).*/\1/p" | sort | uniq`; do
+      A="$A $i"
+    done
+    echo $A
 }
 
 # Get all the build variables needed by this script in a single call to the build system.
 function build_build_var_cache()
 {
-    T=$(gettop)
+    local T=$(gettop)
     # Grep out the variable names from the script.
-    cached_vars=`cat $T/build/envsetup.sh | tr '()' '  ' | awk '{for(i=1;i<=NF;i++) if($i~/get_build_var/) print $(i+1)}' | sort -u | tr '\n' ' '`
-    cached_abs_vars=`cat $T/build/envsetup.sh | tr '()' '  ' | awk '{for(i=1;i<=NF;i++) if($i~/get_abs_build_var/) print $(i+1)}' | sort -u | tr '\n' ' '`
+    cached_vars=`cat $T/build/envsetup.sh $T/vendor/ev/build/envsetup.sh | tr '()' '  ' | awk '{for(i=1;i<=NF;i++) if($i~/get_build_var/) print $(i+1)}' | sort -u | tr '\n' ' '`
+    cached_abs_vars=`cat $T/build/envsetup.sh $T/vendor/ev/build/envsetup.sh | tr '()' '  ' | awk '{for(i=1;i<=NF;i++) if($i~/get_abs_build_var/) print $(i+1)}' | sort -u | tr '\n' ' '`
     # Call the build system to dump the "<val>=<value>" pairs as a shell script.
     build_dicts_script=`\cd $T; CALLED_FROM_SETUP=true BUILD_SYSTEM=build/core \
                         command make --no-print-directory -f build/core/config.mk \
@@ -73,6 +80,7 @@ function build_build_var_cache()
 function destroy_build_var_cache()
 {
     unset BUILD_VAR_CACHE_READY
+    local v
     for v in $cached_vars; do
       unset var_cache_$v
     done
@@ -88,11 +96,11 @@ function get_abs_build_var()
 {
     if [ "$BUILD_VAR_CACHE_READY" = "true" ]
     then
-        eval echo \"\${abs_var_cache_$1}\"
+        eval "echo \"\${abs_var_cache_$1}\""
     return
     fi
 
-    T=$(gettop)
+    local T=$(gettop)
     if [ ! "$T" ]; then
         echo "Couldn't locate the top of the tree.  Try setting TOP." >&2
         return
@@ -106,11 +114,11 @@ function get_build_var()
 {
     if [ "$BUILD_VAR_CACHE_READY" = "true" ]
     then
-        eval echo \"\${var_cache_$1}\"
+        eval "echo \"\${var_cache_$1}\""
     return
     fi
 
-    T=$(gettop)
+    local T=$(gettop)
     if [ ! "$T" ]; then
         echo "Couldn't locate the top of the tree.  Try setting TOP." >&2
         return
@@ -122,7 +130,7 @@ function get_build_var()
 # check to see if the supplied product is one we can build
 function check_product()
 {
-    T=$(gettop)
+    local T=$(gettop)
     if [ ! "$T" ]; then
         echo "Couldn't locate the top of the tree.  Try setting TOP." >&2
         return
@@ -148,6 +156,7 @@ VARIANT_CHOICES=(user userdebug eng)
 # check to see if the supplied variant is valid
 function check_variant()
 {
+    local v
     for v in ${VARIANT_CHOICES[@]}
     do
         if [ "$v" = "$1" ]
@@ -160,7 +169,7 @@ function check_variant()
 
 function setpaths()
 {
-    T=$(gettop)
+    local T=$(gettop)
     if [ ! "$T" ]; then
         echo "Couldn't locate the top of the tree.  Try setting TOP."
         return
@@ -191,13 +200,13 @@ function setpaths()
     fi
 
     # and in with the new
-    prebuiltdir=$(getprebuilt)
-    gccprebuiltdir=$(get_abs_build_var ANDROID_GCC_PREBUILTS)
+    local prebuiltdir=$(getprebuilt)
+    local gccprebuiltdir=$(get_abs_build_var ANDROID_GCC_PREBUILTS)
 
     # defined in core/config.mk
-    targetgccversion=$(get_build_var TARGET_GCC_VERSION)
-    targetgccversion2=$(get_build_var 2ND_TARGET_GCC_VERSION)
-    targetlegacygccversion=$(get_build_var TARGET_LEGACY_GCC_VERSION)
+    local targetgccversion=$(get_build_var TARGET_GCC_VERSION)
+    local targetgccversion2=$(get_build_var 2ND_TARGET_GCC_VERSION)
+    local targetlegacygccversion=$(get_build_var TARGET_LEGACY_GCC_VERSION)
     export TARGET_GCC_VERSION=$targetgccversion
 
     # The gcc toolchain does not exists for windows/cygwin. In this case, do not reference it.
@@ -205,6 +214,7 @@ function setpaths()
     export ANDROID_TOOLCHAIN_2ND_ARCH=
     export ANDROID_KERNEL_TOOLCHAIN_PATH=
     local ARCH=$(get_build_var TARGET_ARCH)
+    local toolchaindir toolchaindir2=
     case $ARCH in
         x86) toolchaindir=x86/x86_64-linux-android-$targetgccversion/bin
             ;;
@@ -227,7 +237,7 @@ function setpaths()
         export ANDROID_TOOLCHAIN=$gccprebuiltdir/$toolchaindir
     fi
 
-    if [ -d "$gccprebuiltdir/$toolchaindir2" ]; then
+    if [ "$toolchaindir2" -a -d "$gccprebuiltdir/$toolchaindir2" ]; then
         export ANDROID_TOOLCHAIN_2ND_ARCH=$gccprebuiltdir/$toolchaindir2
     fi
 
@@ -274,9 +284,11 @@ function setpaths()
     unset ANDROID_HOST_OUT
     export ANDROID_HOST_OUT=$(get_abs_build_var HOST_OUT)
 
-    if [ -n "$ANDROID_CCACHE_DIR" ]; then
-        export CCACHE_DIR=$ANDROID_CCACHE_DIR
-    fi
+    unset ANDROID_HOST_OUT_TESTCASES
+    export ANDROID_HOST_OUT_TESTCASES=$(get_abs_build_var HOST_OUT_TESTCASES)
+
+    unset ANDROID_TARGET_OUT_TESTCASES
+    export ANDROID_TARGET_OUT_TESTCASES=$(get_abs_build_var TARGET_OUT_TESTCASES)
 
     # needed for building linux on MacOS
     # TODO: fix the path
@@ -285,7 +297,7 @@ function setpaths()
 
 function printconfig()
 {
-    T=$(gettop)
+    local T=$(gettop)
     if [ ! "$T" ]; then
         echo "Couldn't locate the top of the tree.  Try setting TOP." >&2
         return
@@ -300,7 +312,6 @@ function set_stuff_for_environment()
     setpaths
     set_sequence_number
 
-    export ANDROID_BUILD_TOP=$(gettop)
     # With this environment variable new GCC can apply colors to warnings/errors
     export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
     export ASAN_OPTIONS=detect_leaks=0
@@ -308,7 +319,7 @@ function set_stuff_for_environment()
 
 function set_sequence_number()
 {
-    export BUILD_ENV_SEQUENCE_NUMBER=10
+    export BUILD_ENV_SEQUENCE_NUMBER=13
 }
 
 function settitle()
@@ -347,6 +358,8 @@ function addcompletions()
             . $f
         done
     fi
+
+    complete -C "bit --tab" bit
 }
 
 function choosetype()
@@ -411,6 +424,7 @@ function choosetype()
 #
 function chooseproduct()
 {
+    local default_value
     if [ "x$TARGET_PRODUCT" != x ] ; then
         default_value=$TARGET_PRODUCT
     else
@@ -581,70 +595,56 @@ function lunch()
         then
             selection=${LUNCH_MENU_CHOICES[$(($answer-1))]}
         fi
-    elif (echo -n $answer | grep -q -e "^[^\-][^\-]*-[^\-][^\-]*$")
-    then
-        selection=$answer
     else #It is likely just the board name, assemble the combo for us
-        selection=ev_${answer}-eng
-    fi
-
-    if [ -z "$selection" ]
-    then
-        echo
-        echo "Invalid lunch combo: $answer"
-        return 1
+        selection=ev_${answer}-userdebug
     fi
 
     export TARGET_BUILD_APPS=
 
-    local variant=$(echo -n $selection | sed -e "s/^[^\-]*-//")
-    check_variant $variant
-    if [ $? -ne 0 ]
-    then
-        echo
-        echo "** Invalid variant: '$variant'"
-        echo "** Must be one of ${VARIANT_CHOICES[@]}"
-        variant=
+    local product variant_and_version variant version
+
+    product=${selection%%-*} # Trim everything after first dash
+    variant_and_version=${selection#*-} # Trim everything up to first dash
+    if [ "$variant_and_version" != "$selection" ]; then
+        variant=${variant_and_version%%-*}
+        if [ "$variant" != "$variant_and_version" ]; then
+            version=${variant_and_version#*-}
+        fi
     fi
 
-    local product=$(echo -n $selection | sed -e "s/-.*$//")
+    if [ -z "$product" ]
+    then
+        echo
+        echo "Invalid lunch combo: $selection"
+        return 1
+    fi
+
     check_product $product
     if [ $? -ne 0 ]
     then
         # if we can't find a product, try to grab it off the Evervolv github
-        T=$(gettop)
-        pushd $T > /dev/null
-        build/tools/roomservice.py $product
+        $(gettop)/vendor/ev/build/tools/roomservice.py $product
         popd > /dev/null
         check_product $product
     else
-        build/tools/roomservice.py $product true
+        $(gettop)/vendor/ev/build/tools/roomservice.py $product true
     fi
     TARGET_PRODUCT=$product \
     TARGET_BUILD_VARIANT=$variant \
+    TARGET_PLATFORM_VERSION=$version \
     build_build_var_cache
 
     if [ $? -ne 0 ]
     then
-        echo
-        echo "** Don't have a product spec for: '$product'"
-        echo "** Do you have the right repo manifest?"
-        product=
-    fi
-
-    if [ -z "$product" -o -z "$variant" ]
-    then
-        echo
         return 1
     fi
 
-    export TARGET_PRODUCT=$product
-    export TARGET_BUILD_VARIANT=$variant
+    export TARGET_PRODUCT=$(get_build_var TARGET_PRODUCT)
+    export TARGET_BUILD_VARIANT=$(get_build_var TARGET_BUILD_VARIANT)
+    export TARGET_PLATFORM_VERSION=$(get_build_var TARGET_PLATFORM_VERSION)
     export TARGET_BUILD_TYPE=release
 
     echo
-
-    fixup_common_out_dir
 
     set_stuff_for_environment
     printconfig
@@ -663,26 +663,6 @@ function _lunch()
     return 0
 }
 complete -F _lunch lunch 2>/dev/null
-
-function find_deps() {
-
-    if [ -z "$TARGET_PRODUCT" ]
-    then
-        echo "TARGET_PRODUCT not set..."
-        lunch
-    fi
-
-    build/tools/roomservice.py $TARGET_PRODUCT true
-    if [ $? -ne 0 ]
-    then
-        echo "find_deps failed."
-    fi
-}
-
-function breakfast()
-{
-    lunch $@
-}
 
 # Configures the build to build unbundled apps.
 # Run tapas with one or more app names (from LOCAL_PACKAGE_NAME)
@@ -751,7 +731,7 @@ function gettop
             PWD= /bin/pwd
         else
             local HERE=$PWD
-            T=
+            local T=
             while [ \( ! \( -f $TOPFILE \) \) -a \( $PWD != "/" \) ]; do
                 \cd ..
                 T=`PWD= /bin/pwd -P`
@@ -770,11 +750,18 @@ function getdriver()
     local T="$1"
     test "$WITH_STATIC_ANALYZER" = "0" && unset WITH_STATIC_ANALYZER
     if [ -n "$WITH_STATIC_ANALYZER" ]; then
+        # Use scan-build to collect all static analyzer reports into directory
+        # /tmp/scan-build-yyyy-mm-dd-hhmmss-*
+        # The clang compiler passed by --use-analyzer here is not important.
+        # build/core/binary.mk will set CLANG_CXX and CLANG before calling
+        # c++-analyzer and ccc-analyzer.
+        local CLANG_VERSION=$(get_build_var LLVM_PREBUILTS_VERSION)
+        local BUILD_OS=$(get_build_var BUILD_OS)
+        local CLANG_DIR="$T/prebuilts/clang/host/${BUILD_OS}-x86/${CLANG_VERSION}"
         echo "\
-$T/prebuilts/misc/linux-x86/analyzer/tools/scan-build/scan-build \
---use-analyzer $T/prebuilts/misc/linux-x86/analyzer/bin/analyzer \
---status-bugs \
---top=$T"
+${CLANG_DIR}/tools/scan-build/bin/scan-build \
+--use-analyzer ${CLANG_DIR}/bin/clang \
+--status-bugs"
     fi
 }
 
@@ -792,12 +779,12 @@ function m()
 
 function findmakefile()
 {
-    TOPFILE=build/core/envsetup.mk
+    local TOPFILE=build/core/envsetup.mk
     local HERE=$PWD
-    T=
+    local T=
     while [ \( ! \( -f $TOPFILE \) \) -a \( $PWD != "/" \) ]; do
         T=`PWD= /bin/pwd`
-        if [ -f "$T/Android.mk" ]; then
+        if [ -f "$T/Android.mk" -o -f "$T/Android.bp" ]; then
             echo $T/Android.mk
             \cd $HERE
             return
@@ -830,6 +817,7 @@ function mm()
             echo "Couldn't locate a makefile from the current directory."
             return 1
         else
+            local ARG
             for ARG in $@; do
                 case $ARG in
                   GET-INSTALL-PATH) GET_INSTALL_PATH=$ARG;;
@@ -837,10 +825,16 @@ function mm()
             done
             if [ -n "$GET_INSTALL_PATH" ]; then
               MODULES=
-              ARGS=GET-INSTALL-PATH
+              ARGS=GET-INSTALL-PATH-IN-$(dirname ${M})
+              ARGS=${ARGS//\//-}
             else
-              MODULES=all_modules
+              MODULES=MODULES-IN-$(dirname ${M})
+              # Convert "/" to "-".
+              MODULES=${MODULES//\//-}
               ARGS=$@
+            fi
+            if [ "1" = "${WITH_TIDY_ONLY}" -o "true" = "${WITH_TIDY_ONLY}" ]; then
+              MODULES=tidy_only
             fi
             ONE_SHOT_MAKEFILE=$M $DRV make -C $T -f build/core/main.mk $MODULES $ARGS
         fi
@@ -854,28 +848,38 @@ function mmm()
     if [ "$T" ]; then
         local MAKEFILE=
         local MODULES=
+        local MODULES_IN_PATHS=
         local ARGS=
         local DIR TO_CHOP
+        local DIR_MODULES
         local GET_INSTALL_PATH=
+        local GET_INSTALL_PATHS=
         local DASH_ARGS=$(echo "$@" | awk -v RS=" " -v ORS=" " '/^-.*$/')
         local DIRS=$(echo "$@" | awk -v RS=" " -v ORS=" " '/^[^-].*$/')
         for DIR in $DIRS ; do
-            MODULES=`echo $DIR | sed -n -e 's/.*:\(.*$\)/\1/p' | sed 's/,/ /'`
-            if [ "$MODULES" = "" ]; then
-                MODULES=all_modules
-            fi
+            DIR_MODULES=`echo $DIR | sed -n -e 's/.*:\(.*$\)/\1/p' | sed 's/,/ /'`
             DIR=`echo $DIR | sed -e 's/:.*//' -e 's:/$::'`
-            if [ -f $DIR/Android.mk ]; then
+            # Remove the leading ./ and trailing / if any exists.
+            DIR=${DIR#./}
+            DIR=${DIR%/}
+            if [ -f $DIR/Android.mk -o -f $DIR/Android.bp ]; then
                 local TO_CHOP=`(\cd -P -- $T && pwd -P) | wc -c | tr -d ' '`
                 local TO_CHOP=`expr $TO_CHOP + 1`
                 local START=`PWD= /bin/pwd`
-                local MFILE=`echo $START | cut -c${TO_CHOP}-`
-                if [ "$MFILE" = "" ] ; then
-                    MFILE=$DIR/Android.mk
+                local MDIR=`echo $START | cut -c${TO_CHOP}-`
+                if [ "$MDIR" = "" ] ; then
+                    MDIR=$DIR
                 else
-                    MFILE=$MFILE/$DIR/Android.mk
+                    MDIR=$MDIR/$DIR
                 fi
-                MAKEFILE="$MAKEFILE $MFILE"
+                MDIR=${MDIR%/.}
+                if [ "$DIR_MODULES" = "" ]; then
+                    MODULES_IN_PATHS="$MODULES_IN_PATHS MODULES-IN-$MDIR"
+                    GET_INSTALL_PATHS="$GET_INSTALL_PATHS GET-INSTALL-PATH-IN-$MDIR"
+                else
+                    MODULES="$MODULES $DIR_MODULES"
+                fi
+                MAKEFILE="$MAKEFILE $MDIR/Android.mk"
             else
                 case $DIR in
                   showcommands | snod | dist | *=*) ARGS="$ARGS $DIR";;
@@ -890,10 +894,17 @@ function mmm()
             fi
         done
         if [ -n "$GET_INSTALL_PATH" ]; then
-          ARGS=$GET_INSTALL_PATH
+          ARGS=${GET_INSTALL_PATHS//\//-}
           MODULES=
+          MODULES_IN_PATHS=
         fi
-        ONE_SHOT_MAKEFILE="$MAKEFILE" $DRV make -C $T -f build/core/main.mk $DASH_ARGS $MODULES $ARGS
+        if [ "1" = "${WITH_TIDY_ONLY}" -o "true" = "${WITH_TIDY_ONLY}" ]; then
+          MODULES=tidy_only
+          MODULES_IN_PATHS=
+        fi
+        # Convert "/" to "-".
+        MODULES_IN_PATHS=${MODULES_IN_PATHS//\//-}
+        ONE_SHOT_MAKEFILE="$MAKEFILE" $DRV make -C $T -f build/core/main.mk $DASH_ARGS $MODULES $MODULES_IN_PATHS $ARGS
     else
         echo "Couldn't locate the top of the tree.  Try setting TOP."
         return 1
@@ -911,8 +922,10 @@ function mma()
       echo "Couldn't locate the top of the tree.  Try setting TOP."
       return 1
     fi
-    local MY_PWD=`PWD= /bin/pwd|sed 's:'$T'/::'`
-    local MODULES_IN_PATHS=MODULES-IN-$MY_PWD
+    local M=$(findmakefile)
+    # Remove the path to top as the makefilepath needs to be relative
+    local M=`echo $M|sed 's:'$T'/::'`
+    local MODULES_IN_PATHS=MODULES-IN-$(dirname ${M})
     # Convert "/" to "-".
     MODULES_IN_PATHS=${MODULES_IN_PATHS//\//-}
     $DRV make -C $T -f build/core/main.mk $@ $MODULES_IN_PATHS
@@ -962,9 +975,13 @@ function mmma()
 
 function croot()
 {
-    T=$(gettop)
+    local T=$(gettop)
     if [ "$T" ]; then
-        \cd $(gettop)
+        if [ "$1" ]; then
+            \cd $(gettop)/$1
+        else
+            \cd $(gettop)
+        fi
     else
         echo "Couldn't locate the top of the tree.  Try setting TOP."
     fi
@@ -972,9 +989,9 @@ function croot()
 
 function cproj()
 {
-    TOPFILE=build/core/envsetup.mk
+    local TOPFILE=build/core/envsetup.mk
     local HERE=$PWD
-    T=
+    local T=
     while [ \( ! \( -f $TOPFILE \) \) -a \( $PWD != "/" \) ]; do
         T=$PWD
         if [ -f "$T/Android.mk" ]; then
@@ -1077,7 +1094,7 @@ function coredump_enable()
         return;
     fi;
     echo "Setting core limit for $PID to infinite...";
-    adb shell prlimit $PID 4 -1 -1
+    adb shell /system/bin/ulimit -p $PID -c unlimited
 }
 
 # core - send SIGV and pull the core for process
@@ -1161,8 +1178,7 @@ function stacks()
             adb shell cat $TMP
         else
             # Dump stacks of native process
-            local USE64BIT="$(is64bit $PID)"
-            adb shell debuggerd$USE64BIT -b $PID
+            adb shell debuggerd -b $PID
         fi
     fi
 }
@@ -1226,6 +1242,7 @@ function cgrep()
 
 function resgrep()
 {
+    local dir
     for dir in `find . -name .repo -prune -o -name .git -prune -o -name out -prune -o -name res -type d`; do
         find $dir -type f -name '*\.xml' -exec grep --color -n "$@" {} +
     done
@@ -1253,7 +1270,7 @@ case `uname -s` in
     Darwin)
         function mgrep()
         {
-            find -E . -name .repo -prune -o -name .git -prune -o -path ./out -prune -o -type f -iregex '.*/(Makefile|Makefile\..*|.*\.make|.*\.mak|.*\.mk)' \
+            find -E . -name .repo -prune -o -name .git -prune -o -path ./out -prune -o -type f -iregex '.*/(Makefile|Makefile\..*|.*\.make|.*\.mak|.*\.mk|.*\.bp)' \
                 -exec grep --color -n "$@" {} +
         }
 
@@ -1267,7 +1284,7 @@ case `uname -s` in
     *)
         function mgrep()
         {
-            find . -name .repo -prune -o -name .git -prune -o -path ./out -prune -o -regextype posix-egrep -iregex '(.*\/Makefile|.*\/Makefile\..*|.*\.make|.*\.mak|.*\.mk)' -type f \
+            find . -name .repo -prune -o -name .git -prune -o -path ./out -prune -o -regextype posix-egrep -iregex '(.*\/Makefile|.*\/Makefile\..*|.*\.make|.*\.mak|.*\.mk|.*\.bp)' -type f \
                 -exec grep --color -n "$@" {} +
         }
 
@@ -1287,7 +1304,7 @@ function getprebuilt
 
 function tracedmdump()
 {
-    T=$(gettop)
+    local T=$(gettop)
     if [ ! "$T" ]; then
         echo "Couldn't locate the top of the tree.  Try setting TOP."
         return
@@ -1464,7 +1481,7 @@ function smoketest()
         echo "Couldn't locate output files.  Try running 'lunch' first." >&2
         return
     fi
-    T=$(gettop)
+    local T=$(gettop)
     if [ ! "$T" ]; then
         echo "Couldn't locate the top of the tree.  Try setting TOP." >&2
         return
@@ -1481,7 +1498,7 @@ function smoketest()
 # simple shortcut to the runtest command
 function runtest()
 {
-    T=$(gettop)
+    local T=$(gettop)
     if [ ! "$T" ]; then
         echo "Couldn't locate the top of the tree.  Try setting TOP." >&2
         return
@@ -1494,7 +1511,8 @@ function godir () {
         echo "Usage: godir <regex>"
         return
     fi
-    T=$(gettop)
+    local T=$(gettop)
+    local FILELIST
     if [ ! "$OUT_DIR" = "" ]; then
         mkdir -p $OUT_DIR
         FILELIST=$OUT_DIR/filelist
@@ -1539,370 +1557,16 @@ function godir () {
     \cd $T/$pathname
 }
 
-function cleantree () {
-    read -p "Are you sure you want to erase local changes? (y|N)" ans
-    test "$ans" = "Y" || test "$ans" = "y" || return
-    if [ ! "$ANDROID_BUILD_TOP" ]; then
-        export ANDROID_BUILD_TOP=$(gettop)
-    fi
-    if [ "$(pwd)" != "$ANDROID_BUILD_TOP" ]; then
-        cd "$ANDROID_BUILD_TOP"
-    fi
-    echo "Cleaning tree...This will take a few minutes"
-    repo forall -c git reset --hard >/dev/null 2>&1
-    repo forall -c git clean -fd >/dev/null 2>&1
-    repo sync -fd >/dev/null 2>&1
-    echo "Done"
-}
-
-function aospremote() {
-    git remote rm aosp 2> /dev/null
-    if [ ! -d .git ]
-    then
-        echo .git directory not found. Please run this from the root directory of the Android repository you wish to set up.
-    fi
-    if [ ! "$ANDROID_BUILD_TOP" ]; then
-        export ANDROID_BUILD_TOP=$(gettop)
-    fi
-    PROJECT=`pwd | sed s#$ANDROID_BUILD_TOP/##g`
-    if (echo $PROJECT | grep -qv "^device")
-    then
-        PFX="platform/"
-    fi
-    git remote add aosp https://android.googlesource.com/$PFX$PROJECT
-    echo "Remote 'aosp' created"
-}
-export -f aospremote
-
-function cafremote()
-{
-    git remote rm caf 2> /dev/null
-    if [ ! -d .git ]
-    then
-        echo .git directory not found. Please run this from the root directory of the Android repository you wish to set up.
-    fi
-    if [ ! "$ANDROID_BUILD_TOP" ]; then
-        export ANDROID_BUILD_TOP=$(gettop)
-    fi
-    PROJECT=`pwd | sed s#$ANDROID_BUILD_TOP/##g`
-    if (echo $PROJECT | grep -qv "^device")
-    then
-        PFX="platform/"
-    fi
-    git remote add caf git://codeaurora.org/$PFX$PROJECT
-    echo "Remote 'caf' created"
-}
-export -f cafremote
-
-function evgerrit() {
-    if [ $# -eq 0 ]; then
-        $FUNCNAME help
-        return 1
-    fi
-    local user=`git config --get evreview.review.evervolv.com.username`
-    local review=`git config --get remote.github.review`
-    local project=`git config --get remote.github.projectname`
-    local command=$1
-    shift
-    case $command in
-        help)
-            if [ $# -eq 0 ]; then
-                cat <<EOF
-Usage:
-    $FUNCNAME COMMAND [OPTIONS] [CHANGE-ID[/PATCH-SET]][{@|^|~|:}ARG] [-- ARGS]
-
-Commands:
-    fetch   Just fetch the change as FETCH_HEAD
-    help    Show this help, or for a specific command
-    pull    Pull a change into current branch
-    push    Push HEAD or a local branch to Gerrit for a specific branch
-
-Any other Git commands that support refname would work as:
-    git fetch URL CHANGE && git COMMAND OPTIONS FETCH_HEAD{@|^|~|:}ARG -- ARGS
-
-See '$FUNCNAME help COMMAND' for more information on a specific command.
-
-Example:
-    $FUNCNAME checkout -b topic 1234/5
-works as:
-    git fetch http://DOMAIN/p/PROJECT refs/changes/34/1234/5 \\
-      && git checkout -b topic FETCH_HEAD
-will checkout a new branch 'topic' base on patch-set 5 of change 1234.
-Patch-set 1 will be fetched if omitted.
-EOF
-                return
-            fi
-            case $1 in
-                __evg_*) echo "For internal use only." ;;
-                changes|for)
-                    if [ "$FUNCNAME" = "evgerrit" ]; then
-                        echo "'$FUNCNAME $1' is deprecated."
-                    fi
-                    ;;
-                help) $FUNCNAME help ;;
-                fetch|pull) cat <<EOF
-usage: $FUNCNAME $1 [OPTIONS] CHANGE-ID[/PATCH-SET]
-
-works as:
-    git $1 OPTIONS http://DOMAIN/p/PROJECT \\
-      refs/changes/HASH/CHANGE-ID/{PATCH-SET|1}
-
-Example:
-    $FUNCNAME $1 1234
-will $1 patch-set 1 of change 1234
-EOF
-                    ;;
-                push) cat <<EOF
-usage: $FUNCNAME push [OPTIONS] [LOCAL_BRANCH:]REMOTE_BRANCH
-
-works as:
-    git push OPTIONS ssh://USER@DOMAIN:29418/PROJECT \\
-      {LOCAL_BRANCH|HEAD}:refs/for/REMOTE_BRANCH
-
-Example:
-    $FUNCNAME push fix6789:gingerbread
-will push local branch 'fix6789' to Gerrit for branch 'gingerbread'.
-HEAD will be pushed from local if omitted.
-EOF
-                    ;;
-                *)
-                    $FUNCNAME __evg_err_not_supported $1 && return
-                    cat <<EOF
-usage: $FUNCNAME $1 [OPTIONS] CHANGE-ID[/PATCH-SET][{@|^|~|:}ARG] [-- ARGS]
-
-works as:
-    git fetch http://DOMAIN/p/PROJECT \\
-      refs/changes/HASH/CHANGE-ID/{PATCH-SET|1} \\
-      && git $1 OPTIONS FETCH_HEAD{@|^|~|:}ARG -- ARGS
-EOF
-                    ;;
-            esac
+# Make using all available CPUs
+function mka() {
+    case `uname -s` in
+        Darwin)
+            make -j `sysctl hw.ncpu|cut -d" " -f2` "$@"
             ;;
-        __evg_get_ref)
-            $FUNCNAME __evg_err_no_arg $command $# && return 1
-            local change_id patchset_id hash
-            case $1 in
-                */*)
-                    change_id=${1%%/*}
-                    patchset_id=${1#*/}
-                    ;;
-                *)
-                    change_id=$1
-                    patchset_id=1
-                    ;;
-            esac
-            hash=$(($change_id % 100))
-            case $hash in
-                [0-9]) hash="0$hash" ;;
-            esac
-            echo "refs/changes/$hash/$change_id/$patchset_id"
-            ;;
-        fetch|pull)
-            $FUNCNAME __evg_err_no_arg $command $# help && return 1
-            $FUNCNAME __evg_err_not_repo && return 1
-            local change=$1
-            shift
-            git $command $@ http://$review/p/$project \
-                $($FUNCNAME __evg_get_ref $change) || return 1
-            ;;
-        push)
-            $FUNCNAME __evg_err_no_arg $command $# help && return 1
-            $FUNCNAME __evg_err_not_repo && return 1
-            if [ -z "$user" ]; then
-                echo >&2 "Gerrit username not found."
-                return 1
-            fi
-            local local_branch remote_branch
-            case $1 in
-                *:*)
-                    local_branch=${1%:*}
-                    remote_branch=${1##*:}
-                    ;;
-                *)
-                    local_branch=HEAD
-                    remote_branch=$1
-                    ;;
-            esac
-            shift
-            git push $@ ssh://$user@$review:8082/$project \
-                $local_branch:refs/for/$remote_branch || return 1
-            ;;
-        changes|for)
-            if [ "$FUNCNAME" = "evgerrit" ]; then
-                echo >&2 "'$FUNCNAME $command' is deprecated."
-            fi
-            ;;
-        __evg_err_no_arg)
-            if [ $# -lt 2 ]; then
-                echo >&2 "'$FUNCNAME $command' missing argument."
-            elif [ $2 -eq 0 ]; then
-                if [ -n "$3" ]; then
-                    $FUNCNAME help $1
-                else
-                    echo >&2 "'$FUNCNAME $1' missing argument."
-                fi
-            else
-                return 1
-            fi
-            ;;
-        __evg_err_not_repo)
-            if [ -z "$review" -o -z "$project" ]; then
-                echo >&2 "Not a reviewable repository."
-            else
-                return 1
-            fi
-            ;;
-        __evg_err_not_supported)
-            $FUNCNAME __evg_err_no_arg $command $# && return
-            case $1 in
-                #TODO: filter more git commands that don't use refname
-                init|add|rm|mv|status|clone|remote|bisect|config|stash)
-                    echo >&2 "'$FUNCNAME $1' is not supported."
-                    ;;
-                *) return 1 ;;
-            esac
-            ;;
-    #TODO: other special cases?
         *)
-            $FUNCNAME __evg_err_not_supported $command && return 1
-            $FUNCNAME __evg_err_no_arg $command $# help && return 1
-            $FUNCNAME __evg_err_not_repo && return 1
-            local args="$@"
-            local change pre_args refs_arg post_args
-            case "$args" in
-                *--\ *)
-                    pre_args=${args%%-- *}
-                    post_args="-- ${args#*-- }"
-                    ;;
-                *) pre_args="$args" ;;
-            esac
-            args=($pre_args)
-            pre_args=
-            if [ ${#args[@]} -gt 0 ]; then
-                change=${args[${#args[@]}-1]}
-            fi
-            if [ ${#args[@]} -gt 1 ]; then
-                pre_args=${args[0]}
-                for ((i=1; i<${#args[@]}-1; i++)); do
-                    pre_args="$pre_args ${args[$i]}"
-                done
-            fi
-            while ((1)); do
-                case $change in
-                    ""|--)
-                        $FUNCNAME help $command
-                        return 1
-                        ;;
-                    *@*)
-                        if [ -z "$refs_arg" ]; then
-                            refs_arg="@${change#*@}"
-                            change=${change%%@*}
-                        fi
-                        ;;
-                    *~*)
-                        if [ -z "$refs_arg" ]; then
-                            refs_arg="~${change#*~}"
-                            change=${change%%~*}
-                        fi
-                        ;;
-                    *^*)
-                        if [ -z "$refs_arg" ]; then
-                            refs_arg="^${change#*^}"
-                            change=${change%%^*}
-                        fi
-                        ;;
-                    *:*)
-                        if [ -z "$refs_arg" ]; then
-                            refs_arg=":${change#*:}"
-                            change=${change%%:*}
-                        fi
-                        ;;
-                    *) break ;;
-                esac
-            done
-            $FUNCNAME fetch $change \
-                && git $command $pre_args FETCH_HEAD$refs_arg $post_args \
-                || return 1
+            schedtool -B -n 1 -e ionice -n 1 make -j `cat /proc/cpuinfo | grep "^processor" | wc -l` "$@"
             ;;
     esac
-}
-
-function repodiff() {
-    if [ -z "$*" ]; then
-        echo "Usage: repodiff <ref-from> [[ref-to] [--numstat]]"
-        return
-    fi
-    diffopts=$* repo forall -c \
-      'echo "$REPO_PATH ($REPO_REMOTE)"; git diff ${diffopts} 2>/dev/null ;'
-}
-
-function repolog() {
-	local usage=$(cat <<-EOF
-	usage: repolog branch branch [opts]
-	    opts:
-	        -r|--reverse     : reverse log
-	        --full           : omit --oneline
-	        -g|--github      : only show projects with github remote
-		-a|--aosp        : only show projects with aosp remote
-	examples:
-	        repolog github/kitkat HEAD --full
-	        repolog android-4.4_r1 android-4.4_r1.1 -r -a
-
-	EOF
-	)
-	local gitopts="--oneline"
-	local github=0
-	local aosp=0
-	if [ $# -lt 2 ]; then
-		echo "$usage"
-		return 1
-	fi
-	local branch1=$1; shift;
-	local branch2=$1; shift;
-	while [ $# -gt 0 ]; do
-		case $1 in
-			-r|--reverse)
-				gitopts+=" --reverse";;
-			--full)
-				gitopts=${gitopts/--oneline/};;
-			-g|--github)
-				github=1;;
-			-a|--aosp)
-				aosp=1;;
-			-h|--help)
-				echo "$usage"; return 1;;
-		esac
-		shift
-	done
-	if [ "${branch1#github}" != "$branch1" ] || \
-		[ "${branch2#github}" != "$branch2" ]; then
-	       github=1
-	fi
-	if [ $github -eq 1 ]; then
-		gopt=$gitopts br1=$branch1 br2=$branch2 repo forall -pvc 'if [ "$(git config --get remote.github.url)" ]; then git log ${gopt} ${br1}..${br2}; fi;'
-	elif [ $aosp -eq 1 ]; then
-		gopt=$gitopts br1=$branch1 br2=$branch2 repo forall -pvc 'if [ "$(git config --get remote.aosp.url)" ]; then git log ${gopt} ${br1}..${br2}; fi;'
-	else
-		gopt=$gitopts br1=$branch1 br2=$branch2 repo forall -pvc 'git log ${gopt} ${br1}..${br2}'
-	fi
-}
-
-function fixup_common_out_dir() {
-    common_out_dir=$(get_build_var OUT_DIR)/target/common
-    target_device=$(get_build_var TARGET_DEVICE)
-    if [ ! -z $CM_FIXUP_COMMON_OUT ]; then
-        if [ -d ${common_out_dir} ] && [ ! -L ${common_out_dir} ]; then
-            mv ${common_out_dir} ${common_out_dir}-${target_device}
-            ln -s ${common_out_dir}-${target_device} ${common_out_dir}
-        else
-            [ -L ${common_out_dir} ] && rm ${common_out_dir}
-            mkdir -p ${common_out_dir}-${target_device}
-            ln -s ${common_out_dir}-${target_device} ${common_out_dir}
-        fi
-    else
-        [ -L ${common_out_dir} ] && rm ${common_out_dir}
-        mkdir -p ${common_out_dir}
-    fi
 }
 
 # Force JAVA_HOME to point to java 1.7/1.8 if it isn't already set.
@@ -2034,10 +1698,8 @@ if [ "x$SHELL" != "x/bin/bash" ]; then
     case `ps -o command -p $$` in
         *bash*)
             ;;
-        *zsh*)
-            ;;
         *)
-            echo "WARNING: Only bash and zsh are supported, use of other shell may lead to erroneous results"
+            echo "WARNING: Only bash is supported, use of other shell would lead to erroneous results"
             ;;
     esac
 fi
@@ -2047,9 +1709,13 @@ for f in `test -d device && find -L device -maxdepth 4 -name 'vendorsetup.sh' 2>
          `test -d vendor && find -L vendor -maxdepth 4 -name 'vendorsetup.sh' 2> /dev/null | sort` \
          `test -d product && find -L product -maxdepth 4 -name 'vendorsetup.sh' 2> /dev/null | sort`
 do
-#    echo "including $f"
+    echo "including $f"
     . $f
 done
 unset f
 
 addcompletions
+
+export ANDROID_BUILD_TOP=$(gettop)
+
+. $ANDROID_BUILD_TOP/vendor/ev/build/envsetup.sh
